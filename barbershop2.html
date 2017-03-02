@@ -1,0 +1,321 @@
+<!doctype html>
+
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<title>The barbershop problem</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+	</head>
+	<body>
+		<script>
+
+			var CUSTOMER_PATIENCE_LEVEL = 30;
+			var TICK_DURATION_MS = 1;
+			var WORKING_DURATION = 480;
+			var MIN_SERVICE_TIME = 20;
+			var MAX_SERVICE_TIME = 30;
+			var DAY_START = 9;
+
+			var ticksToTime = function (tickCount) {
+				var hours = DAY_START + Math.floor(tickCount / 60);
+				var minutes = tickCount % 60;
+				return hours + ":" + minutes;
+			};
+
+			var print = function (message) {
+				console.log("[ " + ticksToTime(Timeline.currentTick) + " ] " + message);
+			};
+
+			var generateRandomInt = function (min, max) {
+				min = Math.ceil(min)
+				max = Math.floor(max)
+				return Math.floor(Math.random() * (max - min)) + min;
+			};
+
+			var Customer = function (index, activateTick) {
+				this.name = "Customer-" + index;
+				this.waiting = false;
+				this.startedWaitAt = 0;
+				this.activateTick = activateTick;
+
+				this.lookingForHaircut = function () {
+					return Timeline.currentTick === this.activateTick;
+				};
+
+				this.visitBarbershop = function () {
+					print(this.name + " entered.");
+					if (Barbershop.isTakingCustomers()) {
+						if (Barbershop.hasRoom()) {
+							Barbershop.addToWaitingRoom(this);
+							this.waiting = true;
+							this.startedWaitAt = Timeline.currentTick;
+						} else {
+							print(this.name + " left impatiently.");
+						}
+					} else {
+						print(this.name + " left cursing himself.");
+					}
+				};
+
+				this.isTiredOfWaiting = function () {
+					return (
+						this.waiting &&
+						Timeline.currentTick === (this.startedWaitAt + CUSTOMER_PATIENCE_LEVEL)
+					);
+				};
+
+				this.tick = function () {
+					if (this.lookingForHaircut()) {
+						this.visitBarbershop();
+					}
+
+					if (this.isTiredOfWaiting()) {
+						this.waiting = false;
+						Barbershop.removeFromWaitingRoom(this);
+						print(this.name + " left unfulfilled.");
+					}
+				};
+			};
+
+			var Barber = function (name, shiftStart, shiftEnd) {
+				this.name = name;
+				this.atWork = false;
+				this.isWorking = false;
+				this.shiftStart = shiftStart;
+				this.shiftEnd = shiftEnd;
+				this.workingOn = null;
+				this.finishedWithCustomerAt = 0;
+
+				this.isTimeToStartShift = function () {
+					return Timeline.currentTick === this.shiftStart;
+				};
+
+				this.isTimeToEndShift = function () {
+					return Timeline.currentTick >= this.shiftEnd;
+				}
+
+				this.startWork = function () {
+					this.atWork = true;
+				};
+
+				this.stopWork = function () {
+					this.atWork = false;
+				};
+
+				this.estimateEffort = function (tickCount) {
+					var timeToComplete = generateRandomInt(MIN_SERVICE_TIME, MAX_SERVICE_TIME);
+					this.finishedWithCustomerAt = tickCount + timeToComplete;
+				};
+
+				this.workOn = function (customer, tickCount) {
+					this.estimateEffort(tickCount);
+					this.workingOn = customer;
+					this.isWorking = true;
+					customer.waiting = false;
+					print(this.name + " started cutting " + customer.name + "'s hair.");
+				};
+
+				this.isDoneWithCurrentCustomer = function (tickCount) {
+					return this.finishedWithCustomerAt === tickCount;
+				};
+
+				this.completeWork = function (tickCount) {
+					print(this.name + " ended cutting " + this.workingOn.name + "'s hair.")
+					print(this.workingOn.name + " left satisfied.");
+					Barbershop.removeFromWaitingRoom(this.workingOn);
+					this.isWorking = false;
+					this.workingOn = null;
+				};
+
+				this.tick = function () {
+					var tickCount = Timeline.currentTick;
+					if (this.isTimeToStartShift()) {
+						this.startWork();
+						print(this.name + " started shift.");
+					}
+
+					if (this.isDoneWithCurrentCustomer(tickCount)) {
+						this.completeWork(tickCount);
+					}
+
+					if (this.isTimeToEndShift() && 
+						!this.isWorking && this.atWork) {
+						this.stopWork();
+						print(this.name + " ended shift.");
+					}
+				};
+			};
+
+			var Barbershop = {
+				totalTicks: 0,
+				openForBusiness: false,
+				customerQueue: [],
+				maxCapacity: 15,
+
+				init: function (totalTicks) {
+					this.totalTicks = totalTicks;
+				},
+
+				isTakingCustomers: function () {
+					return Timeline.currentTick <= WORKING_DURATION;
+				},
+
+				open: function () {
+					this.openForBusiness = true;
+					print("Barber shop opened");
+				},
+
+				close: function () {
+					this.openForBusiness = false;
+					this.kickWaitingCustomers();
+					print("Barber shop closed");
+				},
+
+				getUnAttendedCustomers: function () {
+					return this.customerQueue.filter(function (customer) {
+						return Barbers.barbers.map(function (barber) {
+							return (!barber.workingOn || 
+							(barber.workingOn.name !== customer.name));
+						}).reduce(function (accumulator, currentValue) {
+							return accumulator && currentValue;
+						});
+					});
+				},
+
+				kickWaitingCustomers: function () {
+					var that = this;
+					var customersToKick = this.getUnAttendedCustomers();
+					customersToKick.forEach(function (customer) {
+						that.removeFromWaitingRoom(customer);
+						print(customer.name + " left furiously.");
+					});
+				},
+
+				hasRoom: function () {
+					return this.customerQueue.length < this.maxCapacity;
+				},
+
+				addToWaitingRoom: function (customer) {
+					this.customerQueue.push(customer);
+				},
+
+				removeFromWaitingRoom: function (customer) {
+					this.customerQueue = this.customerQueue.filter(function (customerInTest) {
+						return customerInTest.name !== customer.name;
+					});
+				},
+
+				tick: function () {
+					var tickCount = Timeline.currentTick;
+					if (tickCount === 1) { this.open(tickCount); }
+					if (tickCount === this.totalTicks) { this.close(tickCount); }
+
+					if (this.openForBusiness) {
+						Barbers.takeOnCustomers(tickCount, this.getUnAttendedCustomers());
+					}
+				}
+			};
+
+			var Barbers = {
+				barbers: [],
+
+				addBarber: function (barber) {
+					this.barbers.push(barber);
+				},
+
+				init: function () {
+					this.addBarber(new Barber("Alto", 1, 240));
+					this.addBarber(new Barber("Basil", 1, 240));
+					this.addBarber(new Barber("Camphor", 1, 240));
+					this.addBarber(new Barber("Diogenes", 1, 240));
+					this.addBarber(new Barber("Eros", 241, 480));
+					this.addBarber(new Barber("Fatoush", 241, 480));
+					this.addBarber(new Barber("Glorio", 241, 480));
+					this.addBarber(new Barber("Heber", 241, 480));
+				},
+
+				takeOnCustomers: function (tickCount, unattendedCustomers) {
+					this.barbers.forEach(function (barber){
+						if (barber.atWork && !barber.isWorking) {
+							var customer = unattendedCustomers.pop();
+							if (customer) {
+								barber.workOn(customer, tickCount);
+							}
+						}
+					});
+				},
+
+				tick: function () {
+					this.barbers.forEach(function (barber) {
+						barber.tick(Timeline.currentTick);
+					});
+				}
+			};
+
+			var Customers = {
+				customers: [],
+				totalTicks: 0,
+				averageCheckInInterval: 10,
+
+				generateCustomerBase: function () {
+					var customerCount = this.totalTicks / this.averageCheckInInterval;
+					for (var i = 0; i < customerCount; i++) {
+						var intraIntervalOffset = generateRandomInt(0, this.averageCheckInInterval);
+						var activateTick = (i * 10) + intraIntervalOffset;
+						this.addCustomer(i + 1, activateTick)
+					}
+				},
+
+				addCustomer: function (index, activateTick) {
+					this.customers.push(new Customer(index, activateTick));
+				},
+
+				init: function (totalTicks) {
+					this.totalTicks = totalTicks;
+					this.generateCustomerBase()
+				},
+
+				tick: function () {
+					this.customers.forEach(function (customer) {
+						customer.tick();
+					});
+				}
+			};
+
+
+			var Timeline = {
+				totalTicks: WORKING_DURATION + MAX_SERVICE_TIME,
+				currentTick: 0,
+				tickIntervalPtr: null,
+
+				init: function () {
+					Barbershop.init(this.totalTicks);
+					Barbers.init(this.totalTicks);
+					Customers.init(this.totalTicks);
+				},
+
+				tickIntervalHandler: function () {
+					Barbers.tick();
+					Customers.tick();
+					Barbershop.tick();
+				},
+
+				run: function () {
+					var that = this;
+					var intervalFn = function () {
+						that.currentTick++;
+						that.tickIntervalHandler();
+						if (that.currentTick === that.totalTicks) {
+							clearInterval(that.tickIntervalPtr);
+						}
+					};
+					this.tickIntervalPtr = setInterval(intervalFn, TICK_DURATION_MS)
+				}
+			};
+
+			Timeline.init();
+			Timeline.run();
+		</script>
+	</body>
+</html>

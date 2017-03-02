@@ -1,0 +1,155 @@
+<!doctype html>
+
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="x-ua-compatible" content="ie=edge">
+		<title>The barbershop problem</title>
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+	</head>
+	<body>
+		<script>
+			// The shop can hold 15 customers total - excluding those already in a chair
+			// Simulate 1min as 1ms
+			// One customer every 10 mins = 48 customers over 8 hours
+
+// Notes:
+//  What works:
+//  1. Barbershop: opening, closing
+//  2. Customer behaviors: entering, leaving satisfied, leaving impatiently, leaving furious
+//  3. Barber behaviours: started shift, started cutting, ended cutting
+ 
+//  Not implemented:
+//  1. Timestamp not shown; the print method was meant for this purpose, but I ran out of time.
+//  2. Barber shifts
+// 3. Customers leaving unfulfilled
+
+
+			var generateRandomInt = function (min, max) {
+				min = Math.ceil(min)
+				max = Math.floor(max)
+				return Math.floor(Math.random() * (max - min)) + min;
+			};
+
+			var print = function (message) {
+				console.log(message);
+			};
+
+			var Barber = function (name) {
+				this.name = name;
+				this.free = true;
+				this.workingOn = null;
+				this.workOn= function (customer) {
+					var that = this;
+					this.free = false;
+					this.workingOn = customer;
+					print(this.name + " started cutting " + customer.name + "'s hair");
+					var interval = generateRandomInt(20,40);
+					setTimeout(function () {
+						print(that.name + " ended cutting " + customer.name + "'s hair");
+						print(customer.name + " left satisfied");
+						that.free = true;
+						that.workingOn = null;
+					}, interval);
+				}
+			};
+
+			var Barbershop = {
+				waitingRoomSize: 15,
+				waitList: [],
+				cycles: 480,
+				tickMs: 1,
+				currentTick: 0,
+				barbers: [],
+				acceptCustomer: function (customer) {
+					if (this.waitList.length === this.waitingRoomSize) {
+						print(customer.name + " left impatiently.");
+					} else {
+						this.waitList.push(customer);
+					}
+				},
+				addBarber: function (barber) {
+					print(barber.name + " started shift.");
+					this.barbers.push(barber);
+				},
+				startFirstShift: function () {
+					this.addBarber(new Barber("Alto"));
+					this.addBarber(new Barber("Basil"));
+					this.addBarber(new Barber("Camphor"));
+					this.addBarber(new Barber("Diogenes"));
+				},
+				kickWaitingCustomers: function () {
+					while(this.waitList.length !== 0) {
+						poorCustomer = this.waitList.pop();
+						print(poorCustomer.name + " left furious!");
+					}
+				},
+				assignFreeBarbers: function () {
+					for(var i = 0, n = this.barbers.length; i < n; i++ ) {
+						if (this.barbers[i].free) {
+							customer = this.waitList.pop();
+							if (customer) {
+								this.barbers[i].workOn(customer);
+							}
+						}
+					}
+				},
+				open: function () {
+					print("Barbershop opened.");
+					this.startFirstShift();
+				},
+				close: function () {
+					this.kickWaitingCustomers();
+					print("Barbershop closed");
+				},
+				run: function () {
+					var that = this;
+					this.open();
+					var interval = setInterval(function () {
+						if (that.currentTick == that.cycles) {
+							clearInterval(interval);
+							that.close();
+						} else {
+							that.assignFreeBarbers();
+							that.currentTick++;
+						}
+					}, that.tickMs)
+				}
+			};
+
+			var Customer = function (index) {
+				this.name = "Customer-" + index;
+			};
+
+			var CustomerGenerator = {
+				tickMs: 10,
+				currentCycle: 0,
+				cycles: 48,
+				everyInterval: function () {
+					var that = this;
+					var interval = generateRandomInt(1,10);
+					setTimeout(function () {
+						var newCustomer = new Customer(that.currentCycle + 1);
+						that.currentCycle++;
+						print(newCustomer.name + " entered.");
+						Barbershop.acceptCustomer(newCustomer);
+					}, interval);
+				},
+				run: function () {
+					var that = this;
+					var interval = setInterval(function () {
+						if (that.currentCycle == that.cycles) {
+							clearInterval(interval)
+						} else {
+							that.everyInterval();
+						}
+					}, that.tickMs)
+				}
+			};
+
+			Barbershop.run();
+			CustomerGenerator.run();
+
+		</script>
+	</body>
+</html>
